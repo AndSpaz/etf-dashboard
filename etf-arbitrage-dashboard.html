@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ETF ARB">
+<title>ETF ARB · AI Signals</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #05080f;
+    --card: #0b0f1a;
+    --card2: #111827;
+    --border: #1f2937;
+    --cyan: #22d3ee;
+    --orange: #fb923c;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --text: #f1f5f9;
+    --muted: #64748b;
+    --dim: #1e293b;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 20px);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overscroll-behavior: none;
+  }
+
+  /* NOISE TEXTURE */
+  body::after {
+    content:'';
+    position:fixed; inset:0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events:none; z-index:0; opacity:0.4;
+  }
+
+  .app {
+    position: relative; z-index:1;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 0 calc(var(--safe-bottom) + 20px);
+  }
+
+  /* ── STICKY HEADER ── */
+  .topbar {
+    position: sticky; top:0; z-index:100;
+    background: rgba(5,8,15,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: calc(var(--safe-top) + 14px) 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items:center; justify-content:space-between;
+  }
+
+  .topbar-left { display:flex; flex-direction:column; }
+  .app-name {
+    font-family:'Syne'; font-size:22px; font-weight:800; letter-spacing:1px;
+    background: linear-gradient(90deg, var(--cyan), var(--orange));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    line-height:1;
+  }
+  .app-sub { font-size:10px; color:var(--muted); letter-spacing:2px; margin-top:3px; font-family:'DM Mono'; }
+
+  .topbar-right { display:flex; align-items:center; gap:10px; }
+
+  .status-dot-wrap {
+    display:flex; align-items:center; gap:6px;
+    padding:5px 10px;
+    border:1px solid var(--border); border-radius:20px;
+    font-family:'DM Mono'; font-size:10px; letter-spacing:1px;
+  }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
+  .dot.err { background:var(--red); animation:none; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,0.5)} 50%{box-shadow:0 0 0 5px rgba(74,222,128,0)} }
+
+  .btn-refresh {
+    width:36px; height:36px; border-radius:50%;
+    background:var(--card2); border:1px solid var(--border);
+    color:var(--cyan); font-size:16px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:all 0.2s;
+  }
+  .btn-refresh:active { transform:scale(0.9); }
+  .btn-refresh.spinning { animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── MAIN CONTENT ── */
+  .content { padding: 20px 16px 0; }
+
+  /* ── ACCOUNT STRIP ── */
+  .account-strip {
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:10px; margin-bottom:20px;
+  }
+  .acct-tile {
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:14px 16px; position:relative; overflow:hidden;
+  }
+  .acct-tile::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background:linear-gradient(90deg,var(--cyan),transparent);
+  }
+  .acct-tile.green::before { background:linear-gradient(90deg,var(--green),transparent); }
+  .acct-tile.orange::before { background:linear-gradient(90deg,var(--orange),transparent); }
+  .acct-tile.yellow::before { background:linear-gradient(90deg,var(--yellow),transparent); }
+  .tile-label { font-family:'DM Mono'; font-size:9px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; margin-bottom:6px; }
+  .tile-value { font-family:'Syne'; font-size:22px; font-weight:700; letter-spacing:0.5px; }
+  .tile-sub   { font-family:'DM Mono'; font-size:9px; color:var(--muted); margin-top:3px; }
+
+  /* ── ETF QUOTES ── */
+  .section-label {
+    font-family:'DM Mono'; font-size:9px; letter-spacing:3px; color:var(--muted);
+    text-transform:uppercase; margin-bottom:10px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .section-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  .etf-list { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+  .etf-row-card {
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:14px 16px;
+    display:flex; align-items:center; justify-content:space-between;
+    transition:border-color 0.3s;
+  }
+  .etf-row-card:active { border-color:var(--cyan); }
+  .etf-left { display:flex; align-items:center; gap:12px; }
+  .etf-icon {
+    width:42px; height:42px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Syne'; font-size:13px; font-weight:800; letter-spacing:0.5px;
+  }
+  .etf-name-wrap {}
+  .etf-sym { font-family:'Syne'; font-size:18px; font-weight:700; line-height:1; }
+  .etf-fullname { font-family:'DM Mono'; font-size:9px; color:var(--muted); letter-spacing:1px; margin-top:2px; }
+  .etf-right { text-align:right; }
+  .etf-price { font-family:'DM Mono'; font-size:17px; font-weight:500; }
+  .etf-chg   { font-family:'DM Mono'; font-size:11px; margin-top:2px; }
+
+  /* ── ANALIZZA BTN — HERO ── */
+  .analyze-hero {
+    margin-bottom:20px;
+    padding:3px;
+    border-radius:20px;
+    background:linear-gradient(135deg, var(--cyan), var(--orange));
+    box-shadow:0 0 40px rgba(34,211,238,0.2), 0 0 80px rgba(251,146,60,0.1);
+  }
+  .analyze-hero-inner {
+    background:var(--bg);
+    border-radius:17px;
+    padding:2px;
+  }
+  .btn-analyze {
+    width:100%;
+    padding:20px;
+    border-radius:15px;
+    background:linear-gradient(135deg,rgba(34,211,238,0.12),rgba(251,146,60,0.12));
+    border:none;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    transition:all 0.2s;
+    position:relative; overflow:hidden;
+  }
+  .btn-analyze:active { transform:scale(0.98); }
+  .btn-analyze::before {
+    content:'';
+    position:absolute; inset:0;
+    background:linear-gradient(135deg,rgba(34,211,238,0.08),rgba(251,146,60,0.08));
+    opacity:0; transition:opacity 0.2s;
+  }
+  .btn-analyze:active::before { opacity:1; }
+  .analyze-icon { font-size:28px; }
+  .analyze-text { text-align:left; }
+  .analyze-main { font-family:'Syne'; font-size:20px; font-weight:800; color:var(--text); letter-spacing:0.5px; }
+  .analyze-sub  { font-family:'DM Mono'; font-size:10px; color:var(--muted); letter-spacing:1px; margin-top:2px; }
+  .analyze-arrow { font-size:20px; color:var(--cyan); margin-left:auto; }
+
+  /* pulse ring on btn */
+  .btn-analyze.pulsing .analyze-icon { animation:iconPulse 1s ease infinite; }
+  @keyframes iconPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+
+  /* ── SIGNALS ── */
+  .signals-grid {
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:10px; margin-bottom:20px;
+  }
+  .sig-card {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:16px; padding:16px; text-align:center;
+    transition:all 0.4s;
+  }
+  .sig-card.buy  { border-color:rgba(74,222,128,0.5);  background:rgba(74,222,128,0.06); }
+  .sig-card.sell { border-color:rgba(248,113,113,0.5); background:rgba(248,113,113,0.06); }
+  .sig-card.hold { border-color:rgba(251,191,36,0.4);  background:rgba(251,191,36,0.04); }
+
+  .sig-sym { font-family:'Syne'; font-size:20px; font-weight:800; margin-bottom:10px; }
+  .sig-light {
+    width:56px; height:56px; border-radius:50%;
+    margin:0 auto 10px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px;
+  }
+  .sig-light.buy  { background:rgba(74,222,128,0.15);  border:2px solid var(--green); color:var(--green); box-shadow:0 0 20px rgba(74,222,128,0.3); }
+  .sig-light.sell { background:rgba(248,113,113,0.15); border:2px solid var(--red);   color:var(--red);   box-shadow:0 0 20px rgba(248,113,113,0.3); }
+  .sig-light.hold { background:rgba(251,191,36,0.12);  border:2px solid var(--yellow);color:var(--yellow);box-shadow:0 0 20px rgba(251,191,36,0.2); }
+  .sig-light.wait { background:var(--dim); border:2px solid var(--border); color:var(--muted); }
+
+  .sig-action { font-family:'Syne'; font-size:16px; font-weight:700; margin-bottom:4px; }
+  .sig-conf   { font-family:'DM Mono'; font-size:9px; color:var(--muted); letter-spacing:1px; }
+  .sig-reason { font-family:'DM Sans'; font-size:10px; color:var(--muted); margin-top:8px; line-height:1.4; }
+
+  /* ── AI RATIONALE CARD ── */
+  .rationale-card {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:16px; padding:18px;
+    margin-bottom:20px;
+    border-left:3px solid var(--cyan);
+  }
+  .rationale-label {
+    font-family:'DM Mono'; font-size:9px; letter-spacing:2px; color:var(--cyan);
+    text-transform:uppercase; margin-bottom:10px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .rationale-text {
+    font-family:'DM Sans'; font-size:14px; line-height:1.75; color:var(--text);
+    min-height:40px;
+  }
+  .rationale-text.empty { color:var(--muted); font-size:13px; }
+  .rationale-ts { font-family:'DM Mono'; font-size:9px; color:var(--muted); margin-top:10px; letter-spacing:1px; }
+
+  .top-trade {
+    background:linear-gradient(135deg,rgba(34,211,238,0.08),rgba(251,146,60,0.08));
+    border:1px solid rgba(34,211,238,0.2); border-radius:12px;
+    padding:12px 14px; margin-top:12px;
+    font-family:'DM Sans'; font-size:13px; line-height:1.5;
+  }
+  .top-trade-label { font-family:'DM Mono'; font-size:9px; color:var(--cyan); letter-spacing:2px; margin-bottom:4px; }
+
+  /* CURSOR */
+  .cursor { display:inline-block; width:2px; height:15px; background:var(--cyan); animation:blink 0.8s infinite; vertical-align:middle; margin-left:2px; border-radius:1px; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* ── SPREAD TABLE ── */
+  .spread-card {
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
+    overflow:hidden; margin-bottom:20px;
+  }
+  .spread-card table { width:100%; border-collapse:collapse; }
+  .spread-card th {
+    padding:10px 14px; text-align:left; font-family:'DM Mono'; font-size:9px;
+    letter-spacing:2px; color:var(--muted); text-transform:uppercase;
+    background:var(--card2); border-bottom:1px solid var(--border);
+  }
+  .spread-card td { padding:12px 14px; font-family:'DM Mono'; font-size:12px; border-bottom:1px solid rgba(31,41,55,0.6); }
+  .spread-card tr:last-child td { border-bottom:none; }
+  .spread-bar { height:3px; background:var(--dim); border-radius:2px; margin-top:5px; overflow:hidden; }
+  .spread-fill { height:100%; border-radius:2px; }
+
+  /* ── UTILS ── */
+  .positive { color:var(--green); }
+  .negative { color:var(--red); }
+  .neutral  { color:var(--muted); }
+  .spinner  { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--cyan); border-radius:50%; animation:spin 0.8s linear infinite; display:inline-block; }
+  .placeholder { color:var(--muted); font-family:'DM Mono'; font-size:11px; padding:20px; text-align:center; letter-spacing:1px; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .fade-in { animation:fadeIn 0.35s ease forwards; }
+
+  /* ── FOOTER ── */
+  .footer {
+    text-align:center; font-family:'DM Mono'; font-size:9px; color:var(--muted);
+    letter-spacing:2px; padding:16px 0 0; border-top:1px solid var(--border);
+    margin:0 16px;
+  }
+  .footer span { color:var(--cyan); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="app-name">ETF ARB</div>
+      <div class="app-sub">AI · PAPER TRADING</div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-dot-wrap">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText" style="font-family:'DM Mono';font-size:10px;letter-spacing:1px;">—</span>
+      </div>
+      <button class="btn-refresh" id="refreshBtn" onclick="loadAll()" title="Refresh">↻</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ACCOUNT -->
+    <div class="account-strip" id="accountStrip">
+      <div class="acct-tile">
+        <div class="tile-label">Portfolio</div>
+        <div class="tile-value" id="tPortfolio">—</div>
+        <div class="tile-sub"  id="tPortfolioSub">loading</div>
+      </div>
+      <div class="acct-tile green">
+        <div class="tile-label">Buying Power</div>
+        <div class="tile-value" id="tBP">—</div>
+        <div class="tile-sub">disponibile</div>
+      </div>
+      <div class="acct-tile orange">
+        <div class="tile-label">Day P&amp;L</div>
+        <div class="tile-value" id="tDayPL">—</div>
+        <div class="tile-sub" id="tDayPct">—</div>
+      </div>
+      <div class="acct-tile yellow">
+        <div class="tile-label">Posizioni</div>
+        <div class="tile-value" id="tPositions">—</div>
+        <div class="tile-sub">aperte</div>
+      </div>
+    </div>
+
+    <!-- ETF QUOTES -->
+    <div class="section-label" id="quotesLabel">PREZZI LIVE</div>
+    <div class="etf-list" id="etfList">
+      <div class="placeholder"><span class="spinner"></span></div>
+    </div>
+
+    <!-- ⚡ ANALIZZA — HERO BUTTON -->
+    <div class="analyze-hero">
+      <div class="analyze-hero-inner">
+        <button class="btn-analyze" id="analyzeBtn" onclick="runAIAnalysis()">
+          <div class="analyze-icon">⚡</div>
+          <div class="analyze-text">
+            <div class="analyze-main">ANALIZZA ORA</div>
+            <div class="analyze-sub">SEGNALI AI IN TEMPO REALE</div>
+          </div>
+          <div class="analyze-arrow">›</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- AI SIGNALS -->
+    <div class="section-label">SEGNALI AI</div>
+    <div class="signals-grid" id="signalsGrid">
+      <div class="sig-card" id="sig-SPY"><div class="sig-sym" style="color:#22d3ee">SPY</div><div class="sig-light wait">?</div><div class="sig-action" style="color:var(--muted)">—</div><div class="sig-conf">IN ATTESA</div></div>
+      <div class="sig-card" id="sig-QQQ"><div class="sig-sym" style="color:#fb923c">QQQ</div><div class="sig-light wait">?</div><div class="sig-action" style="color:var(--muted)">—</div><div class="sig-conf">IN ATTESA</div></div>
+      <div class="sig-card" id="sig-IWM"><div class="sig-sym" style="color:#4ade80">IWM</div><div class="sig-light wait">?</div><div class="sig-action" style="color:var(--muted)">—</div><div class="sig-conf">IN ATTESA</div></div>
+      <div class="sig-card" id="sig-GLD"><div class="sig-sym" style="color:#fbbf24">GLD</div><div class="sig-light wait">?</div><div class="sig-action" style="color:var(--muted)">—</div><div class="sig-conf">IN ATTESA</div></div>
+    </div>
+
+    <!-- RATIONALE -->
+    <div class="rationale-card" id="rationaleCard">
+      <div class="rationale-label">🤖 Analisi Claude AI</div>
+      <div class="rationale-text empty" id="rationaleText">Premi ⚡ ANALIZZA ORA per ricevere i segnali di trading basati sui dati live.</div>
+      <div id="topTradeBox"></div>
+      <div class="rationale-ts" id="rationaleTs"></div>
+    </div>
+
+    <!-- SPREAD ARB -->
+    <div class="section-label">SPREAD ARBITRAGE</div>
+    <div class="spread-card" id="spreadCard">
+      <div class="placeholder"><span class="spinner"></span></div>
+    </div>
+
+    <div class="footer">
+      ALPACA PAPER · <span>paper-api.alpaca.markets</span><br>
+      <span id="lastUpdate" style="color:var(--muted)">—</span>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const AK  = 'PKMNRQA27FXLKR7TIGSAPBX6WZ';
+const AS  = '79CnPzRtHZUDLWAo8uAhrda2AGaHS6dja6JGeCGiJnVh';
+const BU  = 'https://paper-api.alpaca.markets/v2';
+const DU  = 'https://data.alpaca.markets/v2';
+const SYM = ['SPY','QQQ','IWM','GLD'];
+const AH  = {'APCA-API-KEY-ID':AK,'APCA-API-SECRET-KEY':AS,'Content-Type':'application/json'};
+
+const ETF = {
+  SPY:{name:'S&P 500',    color:'#22d3ee', bg:'rgba(34,211,238,0.12)'},
+  QQQ:{name:'NASDAQ 100', color:'#fb923c', bg:'rgba(251,146,60,0.12)'},
+  IWM:{name:'Russell 2K', color:'#4ade80', bg:'rgba(74,222,128,0.12)'},
+  GLD:{name:'Gold ETF',   color:'#fbbf24', bg:'rgba(251,191,36,0.12)'},
+};
+
+const SIG = {
+  BUY: {cls:'buy', icon:'▲', color:'var(--green)'},
+  SELL:{cls:'sell',icon:'▼', color:'var(--red)'},
+  HOLD:{cls:'hold',icon:'◆', color:'var(--yellow)'},
+};
+
+let prices={}, acct={}, positions=[];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const f2 = n => (n==null||isNaN(n)) ? '—' : Number(n).toFixed(2);
+const fD = n => {
+  if(n==null||isNaN(n)) return '—';
+  const v=Number(n), abs=Math.abs(v);
+  return (v<0?'-':'')+'$'+abs.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+};
+const cls = n => Number(n)>0?'positive':Number(n)<0?'negative':'neutral';
+
+async function aFetch(path,base=BU){
+  const r=await fetch(`${base}${path}`,{headers:AH});
+  if(!r.ok) throw new Error(`${r.status}`);
+  return r.json();
+}
+
+function setStatus(ok){
+  const dot=document.getElementById('statusDot');
+  const txt=document.getElementById('statusText');
+  if(ok){ dot.className='dot'; txt.textContent='LIVE'; }
+  else  { dot.className='dot err'; txt.textContent='ERROR'; }
+}
+
+// ─── ACCOUNT ─────────────────────────────────────────────────────────────────
+async function loadAccount(){
+  try{
+    acct=await aFetch('/account');
+    const eq=parseFloat(acct.equity),leq=parseFloat(acct.last_equity),bp=parseFloat(acct.buying_power);
+    const pl=eq-leq, pct=leq>0?(pl/leq*100):0;
+    document.getElementById('tPortfolio').textContent=fD(eq);
+    document.getElementById('tPortfolioSub').textContent=`eq ${fD(leq)}`;
+    document.getElementById('tBP').textContent=fD(bp);
+    const plEl=document.getElementById('tDayPL');
+    plEl.textContent=fD(pl); plEl.className=`tile-value ${cls(pl)}`;
+    document.getElementById('tDayPct').textContent=`${pl>=0?'+':''}${f2(pct)}% oggi`;
+    setStatus(true);
+  }catch(e){ console.error(e); setStatus(false); }
+}
+
+// ─── QUOTES ──────────────────────────────────────────────────────────────────
+async function loadQuotes(){
+  const lbl=document.getElementById('quotesLabel');
+  try{
+    const data=await aFetch(`/stocks/snapshots?symbols=${SYM.join(',')}`,DU);
+    prices={};
+    for(const s of SYM){
+      const d=data[s]; if(!d) continue;
+      prices[s]={price:d.latestTrade?.p??d.minuteBar?.c??0,open:d.dailyBar?.o??0,
+        high:d.dailyBar?.h??0,low:d.dailyBar?.l??0,volume:d.dailyBar?.v??0,prevClose:d.prevDailyBar?.c??0};
+    }
+    renderETF(); renderSpread();
+    lbl.childNodes[0].textContent='PREZZI LIVE ';
+    document.getElementById('lastUpdate').textContent=new Date().toLocaleTimeString('it-IT');
+  }catch(e){
+    console.error(e);
+    prices={SPY:{price:561.42,open:558.30,high:563.10,low:557.80,volume:68200000,prevClose:557.90},
+      QQQ:{price:476.88,open:473.10,high:478.50,low:472.30,volume:42500000,prevClose:474.20},
+      IWM:{price:198.34,open:196.80,high:199.10,low:196.20,volume:28100000,prevClose:197.60},
+      GLD:{price:221.76,open:220.40,high:222.30,low:219.90,volume:9800000,prevClose:220.80}};
+    renderETF(); renderSpread();
+    lbl.innerHTML='PREZZI DEMO <span style="color:var(--yellow);font-size:8px;">⚠ SIMULATI</span>';
+  }
+}
+
+function renderETF(){
+  const list=document.getElementById('etfList'); list.innerHTML='';
+  for(const sym of SYM){
+    const d=prices[sym]; if(!d) continue;
+    const m=ETF[sym];
+    const chg=d.price-d.prevClose, pct=d.prevClose>0?(chg/d.prevClose*100):0;
+    const c=chg>=0?'positive':'negative', arr=chg>=0?'▲':'▼';
+    const el=document.createElement('div'); el.className='etf-row-card fade-in';
+    el.innerHTML=`
+      <div class="etf-left">
+        <div class="etf-icon" style="background:${m.bg};color:${m.color}">${sym}</div>
+        <div class="etf-name-wrap">
+          <div class="etf-sym" style="color:${m.color}">${sym}</div>
+          <div class="etf-fullname">${m.name}</div>
+        </div>
+      </div>
+      <div class="etf-right">
+        <div class="etf-price">$${f2(d.price)}</div>
+        <div class="etf-chg ${c}">${arr} ${chg>=0?'+':''}${f2(pct)}%</div>
+      </div>`;
+    list.appendChild(el);
+  }
+}
+
+function renderSpread(){
+  const syms=Object.keys(prices); if(syms.length<2) return;
+  const rows=[];
+  for(let i=0;i<syms.length;i++) for(let j=i+1;j<syms.length;j++){
+    const sA=syms[i],sB=syms[j],dA=prices[sA],dB=prices[sB];
+    if(!dA||!dB||!dA.prevClose||!dB.prevClose) continue;
+    const rA=(dA.price-dA.prevClose)/dA.prevClose*100;
+    const rB=(dB.price-dB.prevClose)/dB.prevClose*100;
+    const sp=rA-rB; rows.push({pair:`${sA}/${sB}`,sp,abs:Math.abs(sp)});
+  }
+  rows.sort((a,b)=>b.abs-a.abs);
+  const mx=Math.max(...rows.map(r=>r.abs),0.01);
+  document.getElementById('spreadCard').innerHTML=`<table>
+    <thead><tr><th>Coppia</th><th>Spread</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td style="font-weight:500">${r.pair}</td>
+      <td><span class="${cls(r.sp)}">${r.sp>=0?'+':''}${f2(r.sp)}%</span>
+        <div class="spread-bar"><div class="spread-fill" style="width:${Math.min(100,r.abs/mx*100)}%;background:${r.abs>1?'var(--orange)':r.abs>0.5?'var(--yellow)':'var(--muted)'};"></div></div>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// ─── POSITIONS ────────────────────────────────────────────────────────────────
+async function loadPositions(){
+  try{
+    positions=await aFetch('/positions');
+    document.getElementById('tPositions').textContent=positions.length;
+  }catch(e){ document.getElementById('tPositions').textContent='—'; }
+}
+
+// ─── SIGNAL CARDS ─────────────────────────────────────────────────────────────
+function setSignalLoading(sym){
+  const el=document.getElementById(`sig-${sym}`),m=ETF[sym]; if(!el) return;
+  el.className='sig-card';
+  el.innerHTML=`<div class="sig-sym" style="color:${m.color}">${sym}</div>
+    <div class="sig-light wait" style="animation:spin 1s linear infinite;border-top-color:${m.color};"></div>
+    <div class="sig-action" style="color:var(--muted)">—</div><div class="sig-conf">ANALISI...</div>`;
+}
+
+function setSignal(sym,action,conf,reason){
+  const el=document.getElementById(`sig-${sym}`),m=ETF[sym],cfg=SIG[action]||SIG.HOLD; if(!el) return;
+  el.className=`sig-card ${cfg.cls} fade-in`;
+  el.innerHTML=`<div class="sig-sym" style="color:${m.color}">${sym}</div>
+    <div class="sig-light ${cfg.cls}">${cfg.icon}</div>
+    <div class="sig-action" style="color:${cfg.color}">${action}</div>
+    <div class="sig-conf">${conf||''}</div>
+    <div class="sig-reason">${reason||''}</div>`;
+}
+
+// ─── TYPEWRITER ───────────────────────────────────────────────────────────────
+function typewriter(el,text,speed=14){
+  return new Promise(resolve=>{
+    el.innerHTML='';
+    let i=0;
+    const cur=document.createElement('span'); cur.className='cursor'; el.appendChild(cur);
+    const t=setInterval(()=>{
+      if(i>=text.length){ clearInterval(t); cur.remove(); resolve(); return; }
+      const c=text[i++];
+      if(c==='\n') cur.insertAdjacentHTML('beforebegin','<br>');
+      else cur.insertAdjacentText('beforebegin',c);
+    },speed);
+  });
+}
+
+// ─── AI ANALYSIS ─────────────────────────────────────────────────────────────
+async function runAIAnalysis(){
+  const btn=document.getElementById('analyzeBtn');
+  btn.disabled=true; btn.classList.add('pulsing');
+  btn.querySelector('.analyze-main').textContent='ANALISI IN CORSO...';
+  btn.querySelector('.analyze-icon').textContent='🔄';
+
+  for(const s of SYM) setSignalLoading(s);
+
+  const rationaleEl=document.getElementById('rationaleText');
+  rationaleEl.className='rationale-text empty';
+  rationaleEl.innerHTML='<span class="spinner"></span> Claude sta analizzando...';
+  document.getElementById('topTradeBox').innerHTML='';
+  document.getElementById('rationaleTs').textContent='';
+
+  const snap=SYM.map(s=>{
+    const d=prices[s]; if(!d) return null;
+    const chg=d.price-d.prevClose,pct=d.prevClose>0?(chg/d.prevClose*100):0;
+    return `${s}: $${f2(d.price)}, ${chg>=0?'+':''}${f2(pct)}%, vol ${(d.volume/1e6).toFixed(1)}M`;
+  }).filter(Boolean).join('\n');
+
+  const pos=positions.length
+    ? positions.map(p=>`${p.symbol} ${p.qty}q P&L ${fD(parseFloat(p.unrealized_pl))}`).join(', ')
+    : 'nessuna';
+
+  const prompt=`Sei un analista quantitativo ETF. Analizza questi dati intraday e genera segnali precisi.
+
+MERCATO ORA:
+${snap}
+
+ACCOUNT: equity ${acct.equity?'$'+parseFloat(acct.equity).toFixed(0):'n/d'}, bp ${acct.buying_power?'$'+parseFloat(acct.buying_power).toFixed(0):'n/d'}, posizioni: ${pos}
+
+REGOLE:
+- SPY/QQQ alta correlazione → divergenze = opportunità
+- IWM beta alto → indicatore anticipatore
+- GLD decorrelato → safe haven in risk-off
+- Cerca momentum relativo e mean reversion
+
+Rispondi SOLO con JSON valido:
+{"signals":{"SPY":{"action":"BUY","confidence":"ALTA","reason":"breve motivo italiano max 10 parole"},"QQQ":{"action":"HOLD","confidence":"MEDIA","reason":"..."},"IWM":{"action":"SELL","confidence":"BASSA","reason":"..."},"GLD":{"action":"BUY","confidence":"ALTA","reason":"..."}},"summary":"2-3 frasi italiane: logica segnali e rischi.","top_trade":"Migliore trade ora in max 15 parole italiano."}`;
+
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})
+    });
+    const data=await res.json();
+    const raw=data.content?.find(b=>b.type==='text')?.text||'';
+    const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error('JSON non trovato');
+    const p=JSON.parse(m[0]);
+
+    for(const s of SYM){ const sig=p.signals?.[s]; if(sig) setSignal(s,sig.action,sig.confidence,sig.reason); }
+
+    rationaleEl.className='rationale-text';
+    await typewriter(rationaleEl, p.summary||'');
+
+    if(p.top_trade){
+      document.getElementById('topTradeBox').innerHTML=`
+        <div class="top-trade">
+          <div class="top-trade-label">🎯 TOP TRADE</div>
+          ${p.top_trade}
+        </div>`;
+    }
+
+    const ts=new Date().toLocaleTimeString('it-IT');
+    document.getElementById('rationaleTs').textContent=`⏱ ${ts}`;
+
+  }catch(e){
+    console.error(e);
+    rationaleEl.className='rationale-text';
+    rationaleEl.innerHTML=`<span style="color:var(--red)">Errore: ${e.message}</span>`;
+  }
+
+  btn.disabled=false; btn.classList.remove('pulsing');
+  btn.querySelector('.analyze-main').textContent='ANALIZZA ORA';
+  btn.querySelector('.analyze-icon').textContent='⚡';
+}
+
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
+async function loadAll(){
+  const rb=document.getElementById('refreshBtn');
+  rb.classList.add('spinning'); rb.disabled=true;
+  await Promise.allSettled([loadAccount(),loadQuotes(),loadPositions()]);
+  rb.classList.remove('spinning'); rb.disabled=false;
+}
+
+loadAll();
+setInterval(()=>{ loadQuotes(); loadAccount(); loadPositions(); }, 30000);
+</script>
+</body>
+</html>
